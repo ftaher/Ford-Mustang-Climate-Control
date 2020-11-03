@@ -5,7 +5,12 @@ import (
 	"github.com/brutella/hc/accessory"
 	"github.com/brutella/hc/service"
 	"github.com/brutella/hc/characteristic"
+	"fmt"
+	"github.com/brutella/can"
 	"log"
+	"net"
+	"os"
+	"os/signal"
 )
 
 type Switch struct {
@@ -190,6 +195,39 @@ func main() {
 */
 
 
+	/* Setting up the can bus */
+	iface, err := net.InterfaceByName("can0")
+
+	if err != nil {
+		log.Fatalf("Could not find network interface can0 (%v)", err)
+	}
+
+	conn, err := can.NewReadWriteCloserForInterface(iface)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	bus := can.NewBus(conn)
+	bus.SubscribeFunc(logCANFrame)
+
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Kill)
+
+	go func() {
+		select {
+		case <-c:
+			bus.Disconnect()
+			os.Exit(1)
+		}
+	}()
+
+	bus.ConnectAndPublish()
+
+
+	/* Creating the Homekit Transport */
 	t, err := hc.NewIPTransport(hc.Config{Pin: "32191123"}, acc.Accessory)
 	if err != nil {
 		log.Fatal(err)
